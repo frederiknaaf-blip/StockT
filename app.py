@@ -6,20 +6,13 @@ Optimierte Version mit robustem News-Filter
 import streamlit as st
 import requests
 from datetime import datetime
-ODER - Schneller Trick:
-Füge ganz oben nach Zeile 8 diese eine Zeile ein:
-import streamlit as st
-import requests
-from datetime import datetime
-
-st.cache_data.clear()
 
 # ==================== KONFIGURATION ====================
-API_TOKEN = "692c1c76752bd1.25047072"  # Dein API-Key
+API_TOKEN = "692c1c76752bd1.25047072"
 BASE_URL = "https://eodhd.com/api"
 USER_NAME = "Thomas"
 
-# Robuste Quellen-Erkennung (findet auch bloomberg.com, wsj.com etc.)
+# Robuste Quellen-Erkennung
 PREMIUM_SOURCES = {
     'bloomberg': ['bloomberg'],
     'reuters': ['reuters'],
@@ -167,15 +160,13 @@ st.markdown("""
 # ==================== HILFSFUNKTIONEN ====================
 
 def is_premium_source(article):
-    """Prüft ob Artikel von Premium-Quelle stammt (robust)"""
-    # Prüfe source, link und tags
+    """Prüft ob Artikel von Premium-Quelle stammt"""
     source = article.get('source', '').lower()
     link = article.get('link', '').lower()
     tags = ' '.join(article.get('tags', [])).lower()
     
     search_text = f"{source} {link} {tags}"
     
-    # Prüfe gegen alle Premium-Quellen
     for source_name, keywords in PREMIUM_SOURCES.items():
         for keyword in keywords:
             if keyword in search_text:
@@ -183,59 +174,8 @@ def is_premium_source(article):
     
     return False, None
 
-def fetch_news(limit=100):
-    """Holt aktuelle News mit robustem Premium-Filter"""
-    try:
-        url = f"{BASE_URL}/news"
-        params = {"api_token": API_TOKEN, "limit": limit, "offset": 0}
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        all_news = response.json()
-        
-        # Filter 1: Premium-Quellen
-        premium_news = []
-        for news in all_news:
-            is_premium, source_name = is_premium_source(news)
-            if is_premium:
-                news['detected_source'] = source_name  # Speichere erkannte Quelle
-                premium_news.append(news)
-        
-        # Filter 2: Nur News mit klarem Sentiment
-        filtered_news = []
-        for news in premium_news:
-            title = news.get('title', '')
-            content = news.get('content', '')
-            sentiment, _, _ = analyze_news_sentiment(title, content)
-            
-            if sentiment:  # Nur positive oder negative News
-                filtered_news.append(news)
-        
-        return filtered_news[:20]  # Top 20 relevante Premium-News
-        
-    except Exception as e:
-        st.error(f"Fehler beim Laden der News: {e}")
-        return []
-
-def get_company_name(ticker):
-    """Holt Firmenname für Ticker"""
-    try:
-        ticker_clean = ticker.strip().upper()
-        if '.' not in ticker_clean:
-            ticker_clean = f"{ticker_clean}.US"
-        
-        url = f"{BASE_URL}/fundamentals/{ticker_clean}"
-        params = {"api_token": API_TOKEN, "fmt": "json"}
-        response = requests.get(url, params=params, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data.get('General', {}).get('Name', ticker)
-    except:
-        pass
-    return ticker
-
 def analyze_news_sentiment(title, content=""):
-    """Analysiert News-Sentiment und gibt Begründung"""
+    """Analysiert News-Sentiment"""
     text = (title + " " + content).lower()
     
     strong_positive = ['beats expectations', 'soars', 'record high', 'surges', 'skyrockets', 
@@ -259,22 +199,71 @@ def analyze_news_sentiment(title, content=""):
     if total_positive > total_negative + 1:
         reason = "Positive Signale: "
         if strong_pos_count > 0:
-            reason += "Übertrifft Erwartungen oder zeigt starkes Wachstum. "
+            reason += "Übertrifft Erwartungen oder zeigt starkes Wachstum."
         else:
-            reason += "Gute Nachrichten für das Unternehmen. "
+            reason += "Gute Nachrichten für das Unternehmen."
         return 'positive', '🟢', reason
     elif total_negative > total_positive + 1:
         reason = "Negative Signale: "
         if strong_neg_count > 0:
-            reason += "Deutliche Rückgänge oder Warnungen erkennbar. "
+            reason += "Deutliche Rückgänge oder Warnungen erkennbar."
         else:
-            reason += "Herausforderungen oder Schwächen zeigen sich. "
+            reason += "Herausforderungen oder Schwächen zeigen sich."
         return 'negative', '🔴', reason
     else:
         return None, None, None
 
+def fetch_news(limit=100):
+    """Holt aktuelle News mit Filter"""
+    try:
+        url = f"{BASE_URL}/news"
+        params = {"api_token": API_TOKEN, "limit": limit, "offset": 0}
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        all_news = response.json()
+        
+        premium_news = []
+        for news in all_news:
+            is_premium, source_name = is_premium_source(news)
+            if is_premium:
+                news['detected_source'] = source_name
+                premium_news.append(news)
+        
+        filtered_news = []
+        for news in premium_news:
+            title = news.get('title', '')
+            content = news.get('content', '')
+            sentiment, _, _ = analyze_news_sentiment(title, content)
+            
+            if sentiment:
+                filtered_news.append(news)
+        
+        return filtered_news[:20]
+        
+    except Exception as e:
+        st.error(f"Fehler beim Laden der News: {e}")
+        return []
+
+def get_company_name(ticker):
+    """Holt Firmenname für Ticker"""
+    try:
+        ticker_clean = ticker.strip().upper()
+        if '.' not in ticker_clean:
+            ticker_clean = f"{ticker_clean}.US"
+        
+        url = f"{BASE_URL}/fundamentals/{ticker_clean}"
+        params = {"api_token": API_TOKEN, "fmt": "json"}
+        response = requests.get(url, params=params, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('General', {}).get('Name', ticker)
+    except:
+        pass
+    return ticker
+
 def create_summary(title, content, company_name):
-    """Erstellt kurze Zusammenfassung mit Firmenname"""
+    """Erstellt kurze Zusammenfassung"""
     if content and len(content) > 50:
         summary = content.split('.')[0] + '.'
         if len(summary) > 200:
@@ -349,17 +338,23 @@ def calculate_rating(data):
     
     pe = highlights.get('PERatio')
     if pe and pe > 0:
-        if pe < 15: score += 9 * 1.5
-        elif pe <= 25: score += 6 * 1.5
-        else: score += 3 * 1.5
+        if pe < 15:
+            score += 9 * 1.5
+        elif pe <= 25:
+            score += 6 * 1.5
+        else:
+            score += 3 * 1.5
         weights += 1.5
     
     roe = highlights.get('ReturnOnEquityTTM')
     if roe:
         roe_pct = roe * 100
-        if roe_pct >= 15: score += 9 * 2.0
-        elif roe_pct >= 5: score += 5 * 2.0
-        else: score += 2 * 2.0
+        if roe_pct >= 15:
+            score += 9 * 2.0
+        elif roe_pct >= 5:
+            score += 5 * 2.0
+        else:
+            score += 2 * 2.0
         weights += 2.0
     
     if weights == 0:
@@ -409,13 +404,12 @@ def show_news_view():
         content = article.get('content', '')
         symbols = article.get('symbols', '')
         
-        # FIX: Symbols kann Liste oder String sein
-        if isinstance(symbols, list):
-            ticker = symbols[0] if symbols else None
-        elif isinstance(symbols, str):
-            ticker = symbols.split(',')[0] if symbols else None
-        else:
-            ticker = None
+        # Symbols kann Liste oder String sein
+        ticker = None
+        if isinstance(symbols, list) and len(symbols) > 0:
+            ticker = symbols[0]
+        elif isinstance(symbols, str) and symbols:
+            ticker = symbols.split(',')[0]
         
         source = article.get('detected_source', article.get('source', 'Premium Source'))
         date = article.get('date', '')
@@ -434,7 +428,7 @@ def show_news_view():
         
         st.markdown(f"""
         <div class="news-card {sentiment}">
-            <span class="ticker-badge" onclick="location.reload()">{ticker}</span>
+            <span class="ticker-badge">{ticker}</span>
             <div class="news-source">🏆 {source} • {date[:10]}</div>
             <div class="news-summary">{summary}</div>
             <div class="sentiment-badge {sentiment}">{emoji} {reason}</div>
@@ -458,7 +452,7 @@ def show_analysis_view():
     
     st.markdown(f'<h1 class="main-header">📊 Analyse: {ticker}</h1>', unsafe_allow_html=True)
     
-    with st.spinner(f'Lade Daten...'):
+    with st.spinner('Lade Daten...'):
         data = fetch_fundamentals(ticker)
     
     if not data or 'General' not in data:
@@ -467,7 +461,6 @@ def show_analysis_view():
     
     general = data.get('General', {})
     highlights = data.get('Highlights', {})
-    valuation = data.get('Valuation', {})
     
     st.markdown(f"""
     <div style="text-align: center; background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%); 
@@ -522,4 +515,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
