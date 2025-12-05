@@ -401,7 +401,15 @@ def show_news_view():
         title = article.get('title', 'Kein Titel')
         content = article.get('content', '')
         symbols = article.get('symbols', '')
-        ticker = symbols.split(',')[0] if symbols else None
+        
+        # FIX: Symbols kann Liste oder String sein
+        if isinstance(symbols, list):
+            ticker = symbols[0] if symbols else None
+        elif isinstance(symbols, str):
+            ticker = symbols.split(',')[0] if symbols else None
+        else:
+            ticker = None
+        
         source = article.get('detected_source', article.get('source', 'Premium Source'))
         date = article.get('date', '')
         link = article.get('link', '#')
