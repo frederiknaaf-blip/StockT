@@ -1,6 +1,3 @@
-Perfekt! Hier ist der **komplette, funktionierende Code**:
-
-```python
 """
 Aktien-App mit News-Feed und Fundamentalanalyse
 Optimierte Version mit robustem News-Filter
