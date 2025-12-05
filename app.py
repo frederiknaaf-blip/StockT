@@ -1,6 +1,9 @@
+Perfekt! Hier ist der **komplette, funktionierende Code**:
+
+```python
 """
 Aktien-App mit News-Feed und Fundamentalanalyse
-Verbesserte Version mit besseren News-Quellen und Zusammenfassungen
+Optimierte Version mit robustem News-Filter
 """
 
 import streamlit as st
@@ -12,10 +15,22 @@ API_TOKEN = "692c1c76752bd1.25047072"  # Dein API-Key
 BASE_URL = "https://eodhd.com/api"
 USER_NAME = "Thomas"
 
-# Top-Quellen für qualitative News
-TOP_SOURCES = ['Bloomberg', 'Reuters', 'CNBC', 'Wall Street Journal', 'Financial Times', 
-               'MarketWatch', "Barron's", 'Benzinga', 'Seeking Alpha', 'TheStreet',
-               'Yahoo Finance', 'Business Insider', 'Forbes']
+# Robuste Quellen-Erkennung (findet auch bloomberg.com, wsj.com etc.)
+PREMIUM_SOURCES = {
+    'bloomberg': ['bloomberg'],
+    'reuters': ['reuters'],
+    'cnbc': ['cnbc'],
+    'wsj': ['wsj', 'wall street journal', 'wallstreet'],
+    'ft': ['financial times', 'ft.com'],
+    'marketwatch': ['marketwatch'],
+    'barrons': ['barron', 'barrons'],
+    'benzinga': ['benzinga'],
+    'seekingalpha': ['seeking alpha', 'seekingalpha'],
+    'thestreet': ['thestreet'],
+    'yahoo': ['yahoo finance', 'yahoo'],
+    'businessinsider': ['business insider', 'businessinsider'],
+    'forbes': ['forbes']
+}
 
 # ==================== PAGE CONFIG ====================
 st.set_page_config(
@@ -147,8 +162,25 @@ st.markdown("""
 
 # ==================== HILFSFUNKTIONEN ====================
 
-def fetch_news(limit=30):
-    """Holt aktuelle News und filtert nach Top-Quellen"""
+def is_premium_source(article):
+    """Prüft ob Artikel von Premium-Quelle stammt (robust)"""
+    # Prüfe source, link und tags
+    source = article.get('source', '').lower()
+    link = article.get('link', '').lower()
+    tags = ' '.join(article.get('tags', [])).lower()
+    
+    search_text = f"{source} {link} {tags}"
+    
+    # Prüfe gegen alle Premium-Quellen
+    for source_name, keywords in PREMIUM_SOURCES.items():
+        for keyword in keywords:
+            if keyword in search_text:
+                return True, source_name.capitalize()
+    
+    return False, None
+
+def fetch_news(limit=100):
+    """Holt aktuelle News mit robustem Premium-Filter"""
     try:
         url = f"{BASE_URL}/news"
         params = {"api_token": API_TOKEN, "limit": limit, "offset": 0}
@@ -156,13 +188,26 @@ def fetch_news(limit=30):
         response.raise_for_status()
         all_news = response.json()
         
-        # Filtere nach Top-Quellen
-        filtered_news = [
-            news for news in all_news 
-            if any(source.lower() in news.get('source', '').lower() for source in TOP_SOURCES)
-        ]
+        # Filter 1: Premium-Quellen
+        premium_news = []
+        for news in all_news:
+            is_premium, source_name = is_premium_source(news)
+            if is_premium:
+                news['detected_source'] = source_name  # Speichere erkannte Quelle
+                premium_news.append(news)
         
-        return filtered_news[:15]
+        # Filter 2: Nur News mit klarem Sentiment
+        filtered_news = []
+        for news in premium_news:
+            title = news.get('title', '')
+            content = news.get('content', '')
+            sentiment, _, _ = analyze_news_sentiment(title, content)
+            
+            if sentiment:  # Nur positive oder negative News
+                filtered_news.append(news)
+        
+        return filtered_news[:20]  # Top 20 relevante Premium-News
+        
     except Exception as e:
         st.error(f"Fehler beim Laden der News: {e}")
         return []
@@ -226,7 +271,6 @@ def analyze_news_sentiment(title, content=""):
 
 def create_summary(title, content, company_name):
     """Erstellt kurze Zusammenfassung mit Firmenname"""
-    # Nimm ersten Satz aus Content oder Title
     if content and len(content) > 50:
         summary = content.split('.')[0] + '.'
         if len(summary) > 200:
@@ -234,7 +278,6 @@ def create_summary(title, content, company_name):
     else:
         summary = title
     
-    # Stelle sicher, dass Firmenname erwähnt wird
     if company_name.lower() not in summary.lower():
         summary = f"{company_name}: {summary}"
     
@@ -345,21 +388,24 @@ if 'selected_ticker' not in st.session_state:
 # ==================== NEWS VIEW ====================
 def show_news_view():
     st.markdown(f'<h1 class="main-header">👋 Hallo {USER_NAME}</h1>', unsafe_allow_html=True)
-    st.markdown("### 📰 Aktuelle Top-Nachrichten")
+    st.markdown("### 📰 Premium News (Bloomberg, Reuters, WSJ & mehr)")
     
-    with st.spinner('Lade News von Top-Quellen...'):
+    with st.spinner('Lade Premium-News...'):
         news_data = fetch_news()
     
     if not news_data:
-        st.warning("Keine News verfügbar")
+        st.warning("⚠️ Aktuell keine relevanten Premium-News verfügbar")
+        st.info("💡 Tipp: Die App zeigt nur News von Top-Quellen mit klaren Trading-Signalen")
         return
+    
+    st.success(f"✅ {len(news_data)} relevante Premium-Artikel gefunden")
     
     for article in news_data:
         title = article.get('title', 'Kein Titel')
         content = article.get('content', '')
         symbols = article.get('symbols', '')
         ticker = symbols.split(',')[0] if symbols else None
-        source = article.get('source', 'Unbekannt')
+        source = article.get('detected_source', article.get('source', 'Premium Source'))
         date = article.get('date', '')
         link = article.get('link', '#')
         
@@ -377,7 +423,7 @@ def show_news_view():
         st.markdown(f"""
         <div class="news-card {sentiment}">
             <span class="ticker-badge" onclick="location.reload()">{ticker}</span>
-            <div class="news-source">{source} • {date[:10]}</div>
+            <div class="news-source">🏆 {source} • {date[:10]}</div>
             <div class="news-summary">{summary}</div>
             <div class="sentiment-badge {sentiment}">{emoji} {reason}</div>
             <br>
@@ -464,3 +510,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
