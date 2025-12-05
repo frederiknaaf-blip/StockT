@@ -312,7 +312,13 @@ def show_news_view():
     for article in news_data:
         title = article.get('title', 'Kein Titel')
         symbols = article.get('symbols', '')
-        ticker = symbols.split(',')[0] if symbols else 'N/A'
+        
+        # FIX: Robuste Ticker-Extraktion
+        if symbols and symbols.strip():
+            ticker = symbols.split(',')[0].strip()
+        else:
+            ticker = 'N/A'
+            
         source = article.get('source', 'Unbekannt')
         date = article.get('date', '')
         
