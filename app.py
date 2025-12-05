@@ -6,6 +6,13 @@ Optimierte Version mit robustem News-Filter
 import streamlit as st
 import requests
 from datetime import datetime
+ODER - Schneller Trick:
+Füge ganz oben nach Zeile 8 diese eine Zeile ein:
+import streamlit as st
+import requests
+from datetime import datetime
+
+st.cache_data.clear()
 
 # ==================== KONFIGURATION ====================
 API_TOKEN = "692c1c76752bd1.25047072"  # Dein API-Key
